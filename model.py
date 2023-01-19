@@ -54,13 +54,15 @@ class TransportMap(mg.GeoSpace):
 
     def __init__(self, crs):
         super().__init__(crs=crs)
-        
+    
     def set_raster_layer(self, raster_file, crs):
+        """load a raster file with velocity data and add the other empty attribute grids"""
         raster_layer = mg.RasterLayer.from_file(
             raster_file, cell_cls=TransportCell, attr_name="velocity"
             )
         raster_layer.crs = crs
 
+        # generate the initial 0 grid for the number of agents that used a cell
         raster_layer.apply_raster(
             data=np.zeros(shape=(1, raster_layer.height, raster_layer.width)),
             attr_name="agents_total"
