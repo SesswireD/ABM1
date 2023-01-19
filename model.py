@@ -197,7 +197,6 @@ class Commuter(mg.GeoAgent):
             # draw deviation from normal distribution and add to the direction
             deviation = np.random.normal(0,20)
             direction = direction + deviation
-            print(direction)
             direction = np.deg2rad(direction)
 
 
@@ -225,7 +224,6 @@ class Commuter(mg.GeoAgent):
     def leave_trace(self, old, new) -> None:
         """Function to leave a trace on the grid"""
         direction = get_direction(old, new)
-        print(direction)
         distance = np.sqrt((new.x-old.x)**2 + (new.y-old.y)**2)
 
         _, cells_passed = get_cells_in_direction(old, direction, distance, self.speed/10, self.model)
@@ -250,7 +248,7 @@ class GeoModel(mesa.Model):
     def __init__(self, num_buildings=20, num_commuters=15):
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
-        self.space.set_raster_layer("100x100_EPSG4326.tif", crs=crs)
+        self.space.set_raster_layer("1000x1000_EPSG4326.tif", crs=crs)
         self.x_dim = self.space.raster_layer.width
         self.y_dim = self.space.raster_layer.height
         self.building = num_buildings
