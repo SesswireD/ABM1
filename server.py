@@ -7,6 +7,8 @@ from model import GeoModel
 from model import Commuter
 from model import Building
 from model import Trail
+from model import TransportCell
+from model import TransportMap
 
 def schelling_draw(agent):
     """
@@ -21,22 +23,36 @@ def schelling_draw(agent):
         portrayal["color"] = "Pink"
     return portrayal
 
-def commuter_draw(agent):
+def model_draw(item):
     """
     Portrayal Method for canvas
     """
     portrayal = dict()
-    if isinstance(agent, Commuter):
+    if isinstance(item, Commuter):
         portrayal["color"] = "Red"
         # portrayal["radius"] = "9"
-    if isinstance(agent, Trail):
+    if isinstance(item, Trail):
         portrayal["color"] = "Pink"
-    if isinstance(agent, Building):
+    if isinstance(item, Building):
         portrayal["color"] = "Blue"
+    if isinstance(item, TransportCell):
+        if item.agents_total == 0:
+            return 1, 1, 1, 0
+        else:
+            # return a blue color gradient based on the normalized water level
+            # from the lowest water level colored as RGBA: (74, 141, 255, 1)
+            # to the highest water level colored as RGBA: (0, 0, 255, 1)
+            return (
+                255,
+                255,
+                0,
+                1,
+            )
+
     return portrayal
 
 
-map_element = mg.visualization.MapModule(commuter_draw)
+map_element = mg.visualization.MapModule(model_draw)
 
 
 server = mesa.visualization.ModularServer(
