@@ -21,12 +21,39 @@ def get_cell(point: Point, model):
     agent_x = point.x
     agent_y = point.y
 
-    pos_x = int(np.floor((agent_x - lower_left_x)/resolution_x))
-    pos_y = int(np.floor((agent_y - lower_left_y)/resolution_y))
+    pos_x = int(np.floor((agent_x - lower_left_x)/resolution_x))-1
+    pos_y = int(np.floor((agent_y - lower_left_y)/resolution_y))-1
 
     pos = (pos_x,pos_y)
 
     return pos
+
+def get_cells_in_direction(origin: Point, direction, distance, interval, model):
+    """gets the cells under a line in a given direction by sampling"""
+    n_points = int(np.ceil(distance/interval)) # number of points given by distance and sampling interval
+    interval = distance/n_points # update interval length
+    points = [] # should the original point be included?
+    cells = []
+    for i in range(1,n_points+1):
+        x = origin.x + np.sin(np.radians(direction)) * i * interval
+        y = origin.y + np.cos(np.radians(direction)) * i * interval
+        point = Point([x,y])
+        points.append(point)
+        cell = get_cell(point, model)
+        cells.append(cell)
+
+    return points, cells
+
+def get_direction(start: Point, goal: Point):
+    """Takes to points and calculates the direction in degrees from start to goal"""
+    dx = goal.x - start.x
+    dy = goal.y - start.y
+    
+    # calculate direction
+    direction = np.arctan2(dx,dy)
+    direction = np.degrees(direction)
+
+    return direction
 
 class TransportCell(mg.Cell):
     agents_total: int
@@ -43,7 +70,7 @@ class TransportCell(mg.Cell):
         self.agents_last_steps = None
         self.velocity = None
 
-    def cell_used(self)->None:
+    def passed(self)->None:
         """Performs the actions required if an agent passes the cell"""
         self.agents_total = self.agents_total +1
 
@@ -86,7 +113,8 @@ class Building(mg.GeoAgent):
             super().__init__(unique_id, model, geometry, crs)
 
     def step(self):
-        print('building')
+        #print('building')
+        pass
 
 
 
@@ -129,7 +157,7 @@ class Commuter(mg.GeoAgent):
     destinations: list
     
 
-    def __init__(self, unique_id, model, geometry, crs, speed = 0.1) -> None:
+    def __init__(self, unique_id, model, geometry, crs, speed = 0.3) -> None:
             super().__init__(unique_id, model, geometry, crs)
             self.speed = speed
 
@@ -163,17 +191,15 @@ class Commuter(mg.GeoAgent):
 
         # move into direction of goal with random deviation
         if distance > self.speed:
-            dx = self.goal.x - self.geometry.x
-            dy = self.goal.y - self.geometry.y
 
-            # calculate direction
-            direction = np.arctan2(dx,dy)
-            direction = np.degrees(direction)
+            direction = get_direction(self.geometry, self.goal)
 
             # draw deviation from normal distribution and add to the direction
             deviation = np.random.normal(0,20)
             direction = direction + deviation
+            print(direction)
             direction = np.deg2rad(direction)
+
 
             # calculate the next point
             new_x = self.geometry.x + np.sin(direction) * self.speed
@@ -196,17 +222,25 @@ class Commuter(mg.GeoAgent):
         agent = ac.from_GeoDataFrame(line, unique_id="uniqueID")
         self.model.space.add_agents(agent)
 
-    def leave_trace(self):
+    def leave_trace(self, old, new) -> None:
         """Function to leave a trace on the grid"""
-        row, col = get_cell(self.geometry, self.model)
-        cell = self.model.space.raster_layer[row][col]
-        cell.cell_used()
+        direction = get_direction(old, new)
+        print(direction)
+        distance = np.sqrt((new.x-old.x)**2 + (new.y-old.y)**2)
+
+        _, cells_passed = get_cells_in_direction(old, direction, distance, self.speed/10, self.model)
+
+        cells_passed = set(cells_passed)
+        for cell in cells_passed:
+            row = cell[0]
+            column = cell[1]
+            self.model.space.raster_layer[row][column].passed()
 
     def step(self):
-        old_position = (self.geometry.x, self.geometry.y)
-        self.leave_trace()
+        old_position = self.geometry
         self.move_to_destination_random()
-        new_position = (self.geometry.x, self.geometry.y)
+        new_position = self.geometry
+        self.leave_trace(old_position,new_position)
         #self.leave_trail(old_position, new_position)
 
 
