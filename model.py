@@ -45,7 +45,7 @@ def get_cells_in_direction(origin: Point, direction, distance, interval, model):
     return points, cells
 
 def get_direction(start: Point, goal: Point):
-    """Takes to points and calculates the direction in degrees from start to goal"""
+    """Takes two points and calculates the direction in degrees from start to goal"""
     dx = goal.x - start.x
     dy = goal.y - start.y
     
@@ -62,8 +62,8 @@ class TransportCell(mg.Cell):
 
     def __init__(
         self,
-        pos: mesa.space.Coordinate | None = None,
-        indices: mesa.space.Coordinate | None = None,
+        pos: mesa.space.Coordinate or None = None,
+        indices: mesa.space.Coordinate or None = None,
     ):
         super().__init__(pos, indices)
         self.agents_total = None
@@ -154,17 +154,20 @@ class Commuter(mg.GeoAgent):
     crs: pyproj.CRS
     speed: float
     home: Building
+    goal: Building
     destinations: list
-    
+    destination_count: int
 
-    def __init__(self, unique_id, model, geometry, crs, speed = 0.3) -> None:
+    def __init__(self, unique_id, model, geometry, crs, speed = 0.3, destination_count = 0) -> None:
             super().__init__(unique_id, model, geometry, crs)
             self.speed = speed
+            self.destination_count = destination_count
 
     def move(self, new_location)->None:
         self.geometry = new_location
 
     def move_to_destination(self):
+        """Moves the agent towards a point in a straight line"""
         self.goal = self.destinations
         distance = self.geometry.distance(self.goal)
 
@@ -186,7 +189,9 @@ class Commuter(mg.GeoAgent):
             # self.goal = self.home
     
     def move_to_destination_random(self):
-        self.goal = self.destinations
+        """Moves the agent towards a point with some random offset"""
+
+        #get the distance to the current objective
         distance = self.geometry.distance(self.goal)
 
         # move into direction of goal with random deviation
@@ -199,18 +204,37 @@ class Commuter(mg.GeoAgent):
             direction = direction + deviation
             direction = np.deg2rad(direction)
 
-
             # calculate the next point
             new_x = self.geometry.x + np.sin(direction) * self.speed
             new_y = self.geometry.y + np.cos(direction) * self.speed
             self.move(Point(new_x, new_y))
 
-        # move to goal when close enough
+        # move directly to goal when close enough
         elif distance > 0:
             self.move(self.goal)
             # self.goal = self.home
 
+        #check if arrived at destination
+        if self.geometry == self.goal:
+            #check if all destinations visited
+            if self.destination_count >= len(self.destinations) -1:
+                
+                #reset destination count
+                self.destination_count = 0
+
+                #return to home
+                self.goal = self.home
+            elif self.goal == self.home:
+                self.goal = self.destinations[self.destination_count]
+            else:
+                #increment destination count
+                self.destination_count += 1
+                self.goal = self.destinations[self.destination_count]
+                
+
+
     def leave_trail(self, old_position, new_position):
+        """Function to leave a trail on the grid. Trail defined as GeoAgent"""
         
         line = LineString([old_position, new_position])
         line = gpd.GeoSeries(line)
@@ -222,7 +246,7 @@ class Commuter(mg.GeoAgent):
         self.model.space.add_agents(agent)
 
     def leave_trace(self, old, new) -> None:
-        """Function to leave a trace on the grid"""
+        """Function to leave a trace on the grid. Trace defined as pass count in a raster"""
         direction = get_direction(old, new)
         distance = np.sqrt((new.x-old.x)**2 + (new.y-old.y)**2)
 
@@ -245,7 +269,7 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=20, num_commuters=15):
+    def __init__(self, num_buildings=3, num_commuters=1, num_destinations = 3):
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer("1000x1000_EPSG4326.tif", crs=crs)
@@ -253,6 +277,7 @@ class GeoModel(mesa.Model):
         self.y_dim = self.space.raster_layer.height
         self.building = num_buildings
         self.commuters = num_commuters
+        self.num_destinations = num_destinations
 
         #Initialize an empty geodataframe for the buildings
         d = {'uniqueID': [], 'geometry': []}
@@ -274,23 +299,40 @@ class GeoModel(mesa.Model):
         agents2 = ac2.from_GeoDataFrame(buildings, unique_id="uniqueID")
         self.space.add_agents(agents2)
 
-        # create commuters and assign them to buildings
-        d = {'uniqueID': [], 'geometry': [], 'home': [], 'destination': []}
+        # create empty geodf for commuters
+        d = {'uniqueID': [], 'geometry': [], 'home': [], 'goal':[], 'destinations': []}
         commuters = gpd.GeoDataFrame(d, crs=crs)
 
+        #create num_commuters commuters
         for i in range(num_commuters):
-            places = buildings.sample(n = 2)
+
+            #sample points to assign as destinations
+            places = buildings.sample(n = num_destinations)
+
+            #first sample point is home (and starting position of agent)
             home = places["geometry"].iloc[0]
             home_location = places["geometry"].iloc[0]
-            destination = places["geometry"].iloc[1]
 
-            c = {'uniqueID': i, 'geometry': home_location, 'home': home, 'destinations': [destination]}
+            #other sample points are travel destinations
+            destination = places["geometry"].tolist()[1:]
+
+            #first destination is the first goal
+            goal = destination[0]
+
+            #save info for the commuter agent in dictionary
+            c = {'uniqueID': i, 'geometry': home_location, 'home': home,'goal': goal,'destinations':[destination]}
+
+            #convert dictionary to geo dataframe
             commuter = gpd.GeoDataFrame(c, crs=crs)
+
+            #add current commuter agent info to previous rows
             commuters = pd.concat([commuters, commuter], ignore_index=True)
 
+        #instantiate commuter agents from geo dataframe
         ac1 = mg.AgentCreator(agent_class=Commuter, model=self)
         agents1 = ac1.from_GeoDataFrame(commuters, unique_id="uniqueID")
 
+        #don't commuters need to be added to the space as well?
         self.space.add_agents(agents1)
 
         #add agents to scheduler
@@ -298,7 +340,6 @@ class GeoModel(mesa.Model):
         for agent in agents1:
             self.schedule_Commuter.add(agent)
 
-        
     def step(self) -> None:
         self.schedule_Commuter.step()
         #self.schedule_Trail.step()
@@ -306,3 +347,6 @@ class GeoModel(mesa.Model):
     def run_model(self, step_count=10):
         for i in range(step_count):
             self.step()
+
+model = GeoModel(num_buildings=4,num_commuters=6,num_destinations=4)
+model.run_model(step_count=1)
