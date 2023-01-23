@@ -49,6 +49,8 @@ def get_cells_in_direction(origin: Point, direction, distance, interval, model):
 
 def get_direction(start: Point, goal: Point):
     """Takes two points and calculates the direction in degrees from start to goal"""
+
+    #calculate change in x and y
     dx = goal.x - start.x
     dy = goal.y - start.y
     
@@ -102,12 +104,26 @@ class TransportMap(mg.GeoSpace):
     def __init__(self, crs):
         super().__init__(crs=crs)
     
-    def set_raster_layer(self, raster_file, crs):
+    def set_raster_from_file(self, raster_file, crs):
         """load a raster file with velocity data and add the other empty attribute grids"""
         raster_layer = mg.RasterLayer.from_file(
             raster_file, cell_cls=TransportCell, attr_name="velocity"
             )
         raster_layer.crs = crs
+
+        # generate the initial 0 grid for the number of agents that used a cell
+        raster_layer.apply_raster(
+            data=np.zeros(shape=(1, raster_layer.height, raster_layer.width)),
+            attr_name="agents_total"
+        )
+
+        super().add_layer(raster_layer)
+
+    def set_raster_layer(self, width, height, crs, bounds):
+        """attempt to create raster without existing file"""
+
+        #changing
+        raster_layer = mg.RasterLayer(width,height,crs, total_bounds=[0.0,0.0,bounds,bounds],cell_cls=TransportCell)
 
         # generate the initial 0 grid for the number of agents that used a cell
         raster_layer.apply_raster(
@@ -201,12 +217,10 @@ class Commuter(mg.GeoAgent):
         # move to goal when close enough
         elif distance > 0:
             self.move(self.goal)
-            # self.goal = self.home
 
-        # set new goal?
-        # else:
-            # self.goal = self.home
-    
+        #check if arrived and chance destination
+        self.check_destination
+
     def move_to_destination_random(self):
         """Moves the agent towards a point with some random offset"""
 
@@ -223,7 +237,6 @@ class Commuter(mg.GeoAgent):
             direction = direction + deviation
             direction = np.deg2rad(direction)
 
-
             # calculate the next point
             new_x = self.geometry.x + np.sin(direction) * self.speed
             new_y = self.geometry.y + np.cos(direction) * self.speed
@@ -232,10 +245,14 @@ class Commuter(mg.GeoAgent):
         # move to goal when close enough
         elif distance > 0:
             self.move(self.goal)
-            # self.goal = self.home
+            
+        #check if arrived and chance destination
+        self.check_destination
+        
 
     def move_to_destination_preference(self):
-        # self.goal = self.destinations
+        """moves the agent towards a point with"""
+        
         distance = self.geometry.distance(self.goal)
 
         # move into direction of goal with random deviation
@@ -273,7 +290,14 @@ class Commuter(mg.GeoAgent):
             self.move(self.goal)
             # self.goal = self.home
 
-        #check if arrived at destination
+        #check if agent has arrived at destination and assign new destination
+        self.check_destination()
+
+                
+    def check_destination(self):
+        """Checks wether agent has arrived at current destination. If true, assign new destination"""
+
+         #check if arrived at destination
         if self.geometry == self.goal:
             #check if all destinations visited
             if self.destination_count >= len(self.destinations) -1:
@@ -288,8 +312,7 @@ class Commuter(mg.GeoAgent):
             else:
                 #increment destination count
                 self.destination_count += 1
-                self.goal = self.destinations[self.destination_count]
-                
+                self.goal = self.destinations[self.destination_count] 
 
 
     def leave_trail(self, old_position, new_position):
@@ -309,7 +332,7 @@ class Commuter(mg.GeoAgent):
         direction = get_direction(old, new)
         distance = np.sqrt((new.x-old.x)**2 + (new.y-old.y)**2)
 
-        _, cells_passed = get_cells_in_direction(old, direction, distance, self.speed/10, self.model)
+        _, cells_passed = get_cells_in_direction(old, direction, distance, self.speed/50, self.model)
 
         cells_passed = set(cells_passed)
         for cell in cells_passed:
@@ -327,15 +350,41 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=8, num_commuters=5, num_destinations = 3):
+    def __init__(self, num_buildings=10, num_commuters=5, num_destinations = 3, width=100, height=100, bounds=10.0):
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
-        self.space.set_raster_layer("1000x1000_EPSG4326.tif", crs=crs)
+        # self.space.set_raster_from_image("1000x1000_EPSG4326.tif", crs=crs)
+        self.space.set_raster_layer(width,width,crs, bounds)
         self.x_dim = self.space.raster_layer.width
-        self.y_dim = self.space.raster_layer.height
+        self.y_dim = self.space.raster_layer.width
         self.building = num_buildings
         self.commuters = num_commuters
         self.num_destinations = num_destinations
+
+        #initialize random locations and place them on the map
+        buildings = self.initialize_locations(num_buildings)
+
+        #initialize agents and assign them destinations
+        self.initialize_agents(num_commuters,num_destinations,buildings)
+
+
+    def step(self) -> None:
+        self.schedule_Commuter.step()
+        #self.schedule_Trail.step()
+
+    def run_model(self, step_count=10):
+        for i in range(step_count):
+            self.step()
+
+    def initialize_locations(self,num_buildings):
+        """Initializes a random number of locations on the raster.
+        Locations are defined as Building GeoAgents
+
+        returns:
+        a GeoDataFrame with building locations
+        """
+        #let us know what the model is doing
+        print("initializing locations")
 
         #Initialize an empty geodataframe for the buildings
         d = {'uniqueID': [], 'geometry': []}
@@ -343,24 +392,43 @@ class GeoModel(mesa.Model):
 
         #Create random points for buildings
         for i in range(num_buildings):
+
+            #get the bounds from the model
             bounds = self.space.raster_layer.total_bounds
-            x = np.random.uniform(bounds[0], bounds[2])
-            y = np.random.uniform(bounds[1], bounds[3])
+
+            #redefine bounds so buildings are created away from the borders
+            x_min = bounds[0] + (0.05*bounds[2])
+            x_max = bounds[2] * 0.95
+            y_min = bounds[1] + (0.05*bounds[3])
+            y_max = bounds[3] * 0.95
+
+            #draw random coordinates
+            x = np.random.uniform(x_min, x_max)
+            y = np.random.uniform(y_min, y_max)
+
+            #add coordinates to the building dataframe
             point = Point([x,y])
             point = gpd.GeoSeries(point)
             p = {'uniqueID': i, 'geometry': point}
             point = gpd.GeoDataFrame(p, crs=crs)
             buildings = pd.concat([buildings, point], ignore_index=True)
 
-        #Place building object (GeoAgent) at the points in the GeoDataframe
+        #create building agents from the locations in the dataframe
         ac2 = mg.AgentCreator(agent_class=Building, model=self)
         agents2 = ac2.from_GeoDataFrame(buildings, unique_id="uniqueID")
+
+        #add the buildings to the space
         self.space.add_agents(agents2)
+
+        return buildings
+
+    def initialize_agents(self, num_commuters, num_destinations, buildings):
 
         # create empty geodf for commuters
         d = {'uniqueID': [], 'geometry': [], 'home': [], 'goal':[], 'destinations': []}
         commuters = gpd.GeoDataFrame(d, crs=crs)
 
+        print("initializing agents")
         #create num_commuters commuters
         for i in range(num_commuters):
 
@@ -398,19 +466,5 @@ class GeoModel(mesa.Model):
         for agent in agents1:
             self.schedule_Commuter.add(agent)
 
-        # add grid cells to scheduler
-        self.schedule_GridCell = RandomActivation(self)
-        for row in self.space.raster_layer.cells:
-            for cell in row:
-                self.schedule_GridCell.add(cell)
-
-    def step(self) -> None:
-        self.schedule_Commuter.step()
-        self.schedule_GridCell.step()
-
-    def run_model(self, step_count=10):
-        for i in range(step_count):
-            self.step()
-
-model = GeoModel(num_buildings=4,num_commuters=6,num_destinations=4)
-model.run_model(step_count=1)
+# model = GeoModel(num_buildings=2,num_commuters=1,num_destinations=2)
+# model.run_model(step_count=3)

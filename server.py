@@ -1,6 +1,5 @@
 import mesa
 import mesa_geo as mg
-# import xyzservices.providers as xyz
 
 from mesa.visualization.modules import CanvasGrid
 from model import GeoModel
@@ -8,40 +7,39 @@ from model import Commuter
 from model import Building
 from model import Trail
 from model import TransportCell
-from model import TransportMap
 
-def schelling_draw(agent):
-    """
-    Portrayal Method for canvas
-    """
-    portrayal = dict()
-    if agent.atype is Commuter:
-        portrayal["color"] = "Red"
-    elif agent.atype == Building:
-        portrayal["color"] = "Blue"
-    else:
-        portrayal["color"] = "Pink"
-    return portrayal
+model_params = {
+    "num_buildings":mesa.visualization.Slider("number of buildings",5,2,50),
+    "num_commuters":mesa.visualization.Slider("number of agents",5,3,100),
+    "num_destinations":mesa.visualization.Slider("number of destinations",3,2,5),
+    "width":mesa.visualization.Slider("dimension of space",100,100,1000,10),
+    "bounds": mesa.visualization.Slider("bounds of the map",10.0,10.0,100.0)
+}
+
 
 def model_draw(item):
     """
-    Portrayal Method for canvas
+    Portrayal Method for canvas determines the colors of each model element
     """
     portrayal = dict()
     if isinstance(item, Commuter):
+        #agents are red
         portrayal["color"] = "Red"
-        # portrayal["radius"] = "9"
+        portrayal["radius"] = .5
     if isinstance(item, Trail):
+        #trails are pink (not used currently)
         portrayal["color"] = "Pink"
     if isinstance(item, Building):
+        #buildings are blue
         portrayal["color"] = "Blue"
+        portrayal["radius"] = 1.0
     if isinstance(item, TransportCell):
-        if item.velocity == 0.0:
-            return 1, 1, 1, 0
+        #traces left by agents are yellow
+        if item.agents_total == 0:
+            #cell color is gray
+            return 40, 70, 156, 1
         else:
-            # return a blue color gradient based on the normalized water level
-            # from the lowest water level colored as RGBA: (74, 141, 255, 1)
-            # to the highest water level colored as RGBA: (0, 0, 255, 1)
+            #
             return (
                 255,
                 255,
@@ -56,10 +54,11 @@ map_element = mg.visualization.MapModule(model_draw)
 
 
 server = mesa.visualization.ModularServer(
-    GeoModel, [map_element], "Commuter_model", {}
+    GeoModel, [map_element], "Commuter_model", model_params
 )
 
+
 #launch the model in web
-server.port = 8521
+# server.port = 8521
 
 server.launch()
