@@ -235,7 +235,7 @@ class Commuter(mg.GeoAgent):
             # self.goal = self.home
 
     def move_to_destination_preference(self):
-        self.goal = self.destinations
+        # self.goal = self.destinations
         distance = self.geometry.distance(self.goal)
 
         # move into direction of goal with random deviation
@@ -327,7 +327,7 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=3, num_commuters=1, num_destinations = 3):
+    def __init__(self, num_buildings=8, num_commuters=5, num_destinations = 3):
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer("1000x1000_EPSG4326.tif", crs=crs)
@@ -406,7 +406,7 @@ class GeoModel(mesa.Model):
 
     def step(self) -> None:
         self.schedule_Commuter.step()
-        # self.schedule_GridCell.step()
+        self.schedule_GridCell.step()
 
     def run_model(self, step_count=10):
         for i in range(step_count):
