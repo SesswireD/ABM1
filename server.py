@@ -36,7 +36,7 @@ def model_draw(item):
     if isinstance(item, Building):
         portrayal["color"] = "Blue"
     if isinstance(item, TransportCell):
-        if item.agents_total == 0:
+        if item.velocity == 0.0:
             return 1, 1, 1, 0
         else:
             # return a blue color gradient based on the normalized water level
@@ -60,6 +60,6 @@ server = mesa.visualization.ModularServer(
 )
 
 #launch the model in web
-# server.port = 8521
+server.port = 8521
 
 server.launch()

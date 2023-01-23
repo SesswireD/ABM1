@@ -13,6 +13,9 @@ from mesa.time import RandomActivation
 #reference system for Mesa-Geo
 crs = "EPSG:4326"
 
+# define sample space for directions
+deviations = np.linspace(-60, 60, 25)
+
 def get_cell(point: Point, model):
     """When given a point the function returns the index of the grid cell that contains this point"""
     resolution_x, resolution_y = model.space.raster_layer.resolution
@@ -55,10 +58,24 @@ def get_direction(start: Point, goal: Point):
 
     return direction
 
+def get_utility(deviation: int, distance: float, cells: list, model):
+
+    # get velocity values from cells
+    velocity = 0
+    for cell in cells:
+        row, column = cell
+        velocity += model.space.raster_layer[row][column].velocity
+
+    # calculate some utility based on deviation, distance and velocity values
+    utility = velocity * 200 + (60 - abs(deviation)) * (10 - distance) 
+
+    return utility
+
+
 class TransportCell(mg.Cell):
     agents_total: int
     agents_last_steps: list
-    velocity: float
+    velocity: int
 
     def __init__(
         self,
@@ -66,16 +83,19 @@ class TransportCell(mg.Cell):
         indices: mesa.space.Coordinate | None = None,
     ):
         super().__init__(pos, indices)
-        self.agents_total = None
+        self.agents_total = 0
         self.agents_last_steps = None
-        self.velocity = None
+        # self.velocity = 0
 
     def passed(self)->None:
         """Performs the actions required if an agent passes the cell"""
-        self.agents_total = self.agents_total +1
+        self.agents_total += 1
+        self.velocity += 10
 
     def step(self):
-        pass
+        if self.velocity > 0:
+            self.velocity -= 1
+            
     
 class TransportMap(mg.GeoSpace):
 
@@ -92,7 +112,7 @@ class TransportMap(mg.GeoSpace):
         # generate the initial 0 grid for the number of agents that used a cell
         raster_layer.apply_raster(
             data=np.zeros(shape=(1, raster_layer.height, raster_layer.width)),
-            attr_name="agents_total"
+            attr_name="velocity"
         )
 
         super().add_layer(raster_layer)
@@ -107,7 +127,6 @@ class Building(mg.GeoAgent):
     model: mesa.Model
     geometry: Point
     crs: pyproj.CRS
-
 
     def __init__(self, unique_id, model, geometry, crs) -> None:
             super().__init__(unique_id, model, geometry, crs)
@@ -210,6 +229,45 @@ class Commuter(mg.GeoAgent):
             self.move(self.goal)
             # self.goal = self.home
 
+    def move_to_destination_preference(self):
+        self.goal = self.destinations
+        distance = self.geometry.distance(self.goal)
+
+        # move into direction of goal with random deviation
+        if distance > self.speed:
+
+            direction = get_direction(self.geometry, self.goal)
+
+            # calculate utility for each direction +- 5 degrees
+            utilities = np.zeros(len(deviations))
+            for i, deviation in enumerate(deviations):
+                
+                test_direction = direction + deviation
+
+                # get grid cells for this direction
+                _, cells = get_cells_in_direction(self.geometry, test_direction, self.speed, self.speed/10, self.model)
+                cells = set(cells)
+
+                # calculate utility
+                utilities[i] = get_utility(deviation, distance, cells, self.model)
+
+            # draw random choice using utilities as weights
+            probabilities = utilities / sum(utilities)
+            deviation = np.random.choice(deviations, p=probabilities)
+
+            direction = direction + deviation
+            direction = np.deg2rad(direction)
+
+            # calculate the next point
+            new_x = self.geometry.x + np.sin(direction) * self.speed
+            new_y = self.geometry.y + np.cos(direction) * self.speed
+            self.move(Point(new_x, new_y))
+
+        # move to goal when close enough
+        elif distance > 0:
+            self.move(self.goal)
+            # self.goal = self.home
+
     def leave_trail(self, old_position, new_position):
         
         line = LineString([old_position, new_position])
@@ -230,13 +288,12 @@ class Commuter(mg.GeoAgent):
 
         cells_passed = set(cells_passed)
         for cell in cells_passed:
-            row = cell[0]
-            column = cell[1]
+            row, column = cell
             self.model.space.raster_layer[row][column].passed()
 
     def step(self):
         old_position = self.geometry
-        self.move_to_destination_random()
+        self.move_to_destination_preference()
         new_position = self.geometry
         self.leave_trace(old_position,new_position)
         #self.leave_trail(old_position, new_position)
@@ -298,10 +355,15 @@ class GeoModel(mesa.Model):
         for agent in agents1:
             self.schedule_Commuter.add(agent)
 
-        
+        # add grid cells to scheduler
+        self.schedule_GridCell = RandomActivation(self)
+        for row in self.space.raster_layer.cells:
+            for cell in row:
+                self.schedule_GridCell.add(cell)
+
     def step(self) -> None:
         self.schedule_Commuter.step()
-        #self.schedule_Trail.step()
+        # self.schedule_GridCell.step()
 
     def run_model(self, step_count=10):
         for i in range(step_count):
