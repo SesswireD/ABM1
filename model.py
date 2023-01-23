@@ -13,8 +13,14 @@ from mesa.time import RandomActivation
 #reference system for Mesa-Geo
 crs = "EPSG:4326"
 
+# define model globally
+model = None
+
 # define sample space for directions
 deviations = np.linspace(-60, 60, 25)
+
+def get_time(model) -> pd.Timedelta:
+    return pd.Timedelta(days=model.day, hours=model.hour, minutes=model.minute)
 
 def get_cell(point: Point, model):
     """When given a point the function returns the index of the grid cell that contains this point"""
@@ -77,7 +83,8 @@ def get_utility(deviation: int, distance: float, cells: list, model):
 class TransportCell(mg.Cell):
     agents_total: int
     agents_last_steps: list
-    velocity: int
+    velocity: float
+    time_last_step: pd.Timedelta
 
     def __init__(
         self,
@@ -86,17 +93,49 @@ class TransportCell(mg.Cell):
     ):
         super().__init__(pos, indices)
         self.agents_total = 0
-        self.agents_last_steps = None
+        self.agents_last_steps = []
+        self.time_last_step = None
         # self.velocity = 0
 
-    def passed(self)->None:
+    def passed(self, model)->None:
         """Performs the actions required if an agent passes the cell"""
         self.agents_total += 1
-        self.velocity += 10
+        self.add_to_agents_last_steps(model)
+        self.calculate_velocity()
+
+    def add_to_agents_last_steps(self, model, steps_to_keep=100):
+        """Adds to the list of agents that visited the cell in the last steps. The sum of this list will be used for the velocity
+        calculation"""
+        time = get_time(model)
+
+        if self.time_last_step == time:
+            self.agents_last_steps[-1] += 1
+        elif len(self.agents_last_steps)>steps_to_keep:
+            self.agents_last_steps.pop(0)
+        else:
+            self.agents_last_steps.append(1)
+        self.time_last_step = time
+
+    def decrease_agents_last_steps(self, model, steps_to_keep=100):
+        time = get_time(model)
+        if not self.time_last_step == time:
+            self.agents_last_steps.append(0)
+
+        if len(self.agents_last_steps)>steps_to_keep:
+            self.agents_last_steps.pop(0)
+
+
+    def calculate_velocity(self, max_velocity = 10) -> None:
+        """Calculates the velocity."""
+        last_agents = sum(self.agents_last_steps)
+
+        self.velocity = 1 + max_velocity * last_agents / (last_agents+1)
+
 
     def step(self):
-        if self.velocity > 0:
-            self.velocity -= 1
+        global model
+        self.decrease_agents_last_steps(model)
+        self.calculate_velocity()
             
     
 class TransportMap(mg.GeoSpace):
@@ -127,7 +166,7 @@ class TransportMap(mg.GeoSpace):
 
         # generate the initial 0 grid for the number of agents that used a cell
         raster_layer.apply_raster(
-            data=np.zeros(shape=(1, raster_layer.height, raster_layer.width)),
+            data=np.ones(shape=(1, raster_layer.height, raster_layer.width)),
             attr_name="velocity"
         )
 
@@ -337,7 +376,7 @@ class Commuter(mg.GeoAgent):
         cells_passed = set(cells_passed)
         for cell in cells_passed:
             row, column = cell
-            self.model.space.raster_layer[row][column].passed()
+            self.model.space.raster_layer[row][column].passed(self.model)
 
     def step(self):
         old_position = self.geometry
@@ -353,6 +392,9 @@ class GeoModel(mesa.Model):
     def __init__(self, num_buildings=10, num_commuters=5, num_destinations = 3, width=100, height=100, bounds=10.0):
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
+        self.day = 0
+        self.hour = 0
+        self.minute = 0
         # self.space.set_raster_from_image("1000x1000_EPSG4326.tif", crs=crs)
         self.space.set_raster_layer(width,width,crs, bounds)
         self.x_dim = self.space.raster_layer.width
@@ -367,9 +409,23 @@ class GeoModel(mesa.Model):
         #initialize agents and assign them destinations
         self.initialize_agents(num_commuters,num_destinations,buildings)
 
+        global model
+        model = self
+
+    def __update_clock(self) -> None:
+        self.minute += 5
+        if self.minute == 60:
+            if self.hour == 23:
+                self.hour = 0
+                self.day += 1
+            else:
+                self.hour += 1
+            self.minute = 0
 
     def step(self) -> None:
+        self.__update_clock()
         self.schedule_Commuter.step()
+        self.schedule_Cells.step()
         #self.schedule_Trail.step()
 
     def run_model(self, step_count=10):
@@ -465,6 +521,10 @@ class GeoModel(mesa.Model):
         self.schedule_Commuter = RandomActivation(self)
         for agent in agents1:
             self.schedule_Commuter.add(agent)
+        
+        self.schedule_Cells = RandomActivation(self)
+        for cell in self.space.raster_layer:
+            self.schedule_Cells.add(cell)
 
 # model = GeoModel(num_buildings=2,num_commuters=1,num_destinations=2)
 # model.run_model(step_count=3)

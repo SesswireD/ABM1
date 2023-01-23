@@ -33,16 +33,29 @@ def model_draw(item):
         #buildings are blue
         portrayal["color"] = "Blue"
         portrayal["radius"] = 1.0
+    # if isinstance(item, TransportCell):
+    #     #traces left by agents are yellow
+    #     if item.agents_total == 0:
+    #         #cell color is gray
+    #         return 40, 70, 156, 1
+    #     else:
+    #         #
+    #         return (
+    #             255,
+    #             255,
+    #             0,
+    #             1,
+    #         )
     if isinstance(item, TransportCell):
         #traces left by agents are yellow
-        if item.agents_total == 0:
+        if item.velocity == 1:
             #cell color is gray
             return 40, 70, 156, 1
         else:
             #
             return (
-                255,
-                255,
+                (1 - item.velocity/10) * 255,
+                (1 - item.velocity/10) * 255,
                 0,
                 1,
             )
