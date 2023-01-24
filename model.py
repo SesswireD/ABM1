@@ -374,6 +374,9 @@ class Commuter(mg.GeoAgent):
         _, cells_passed = get_cells_in_direction(old, direction, distance, self.speed/50, self.model)
 
         cells_passed = set(cells_passed)
+        old_cell = get_cell(old, self.model)
+        if old_cell in cells_passed:
+            cells_passed.remove(old_cell)
         for cell in cells_passed:
             row, column = cell
             self.model.space.raster_layer[row][column].passed(self.model)
