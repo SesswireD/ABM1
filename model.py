@@ -284,6 +284,123 @@ class Commuter(mg.GeoAgent):
         # move to goal when close enough
         elif distance > 0:
             self.move(self.goal)
+            # self.goal = self.home     
+    
+        #check if arrived and get new destination
+        self.check_destination()
+
+    def move_to_destination_preference_greedy(self):
+        """Move the agent towards desination with preference for existing paths"""
+
+        #get the distance to the current objective
+        distance = self.geometry.distance(self.goal)
+
+        #move to goal directly if within reach
+        if distance < self.speed:
+            self.move(self.goal)
+
+            #check for new goals
+            self.check_destination()
+        
+        else:
+            #get directions within vision towards goal
+            directions = self.get_vision_directions()
+
+            #empty list for cells
+            cells_on_path = []
+
+            #get the cells that are on each path of the direction
+            for direction in directions: 
+                _,path = get_cells_in_direction(self.geometry,direction,self.vision,1,self.model)
+                cells_on_path.append(path)
+
+            #empy list for path sums
+            path_sums = []
+
+            #get the strength of each path
+            for path in cells_on_path:
+                visit_count = 0
+                for cell in path:
+                    if not self.model.space.raster_layer.out_of_bounds(cell):
+                        visit_count += self.model.space.raster_layer[cell[0]][cell[1]].trace_strength
+                path_sums.append(visit_count)
+            
+            #calculate how far an agent can go on each path
+
+            #assure that direction towards goal is preferred 
+            mid_index = math.floor(len(path_sums)/2)
+            path_sums[mid_index] +=1
+
+            #convert path visits to choice probabilities
+            choice_probabilities = np.asarray(path_sums) / sum(path_sums)
+
+            #pick a direction based on the probabilities
+            indices = list(range(0,len(directions)))
+            direction_index = np.random.choice(indices, p=choice_probabilities)
+
+            new_direction = directions[direction_index]
+            #add some randomness to the direction
+            deviation = np.random.normal(0,20)
+            new_direction +=deviation
+
+            #REPLACE SELF.SPEED TO ADD SPEED MULTIPLIER FOR PATH
+            speed = self.speed
+
+            #get the coordinates for the point towards this direction
+            x = self.calculate_x_point(self.geometry.x,new_direction,speed)
+            y = self.calculate_y_point(self.geometry.y,new_direction,speed)
+            new_location = Point([x,y])
+
+            #move to new location
+            self.move(new_location)
+
+    def test(self):
+        """WTF IS GOING ON"""
+
+        #get current pos:
+        current = self.geometry
+
+        #get linspace of degrees within range
+        degrees = self.get_vision_directions()
+
+        #calculate the points for these directions
+        points = []
+        for i in range(len(degrees)):
+            # print(self.vision)
+            #convert degree to radiant
+            direction = np.deg2rad(degrees[i])
+            #calculate new x point
+            x_point = current.x + np.sin(direction) * 100
+            y_point = current.y + np.cos(direction) * 100
+            point = (x_point,y_point)
+            points.append(point)
+
+        print(f"distance1=f{current.distance(Point([points[0][0],points[0][1]]))}")
+        print(f"distance2=f{current.distance(Point([points[-1][0],points[-1][1]]))}")
+        print(f"current={current}")
+        print(f"points={points}")
+
+        
+    def move_to_destination_preference_optimized(self):
+        """Move the agent towards desination with preference for existing paths"""
+
+        #get the distance to the current objective
+        distance = self.geometry.distance(self.goal)
+
+        #empty list for storing distances of alternative paths
+        path_distances = []
+
+        #empty list for storing coordinates of alternative paths
+        path_points = []
+        path_sums = []
+        path_speeds = []
+
+        #move to goal directly if within reach
+        if distance < self.speed:
+            self.move(self.goal)
+
+            #check for new goals
+            self.check_destination()
             
         #check if arrived and chance destination
         self.check_destination
@@ -297,6 +414,59 @@ class Commuter(mg.GeoAgent):
         # move into direction of goal with random deviation
         if distance > self.speed:
 
+        slope = max_multiplier/ self.model.commuters
+        speed_multiplier = 1 +  (slope * path_strength)
+
+        if speed_multiplier > max_multiplier:
+            speed_multiplier = max_multiplier
+
+        return speed_multiplier
+
+
+    def get_speed_multiplier_sigmoid(self,path_strength, slope = 0.1 ,max_multiplier=10):
+        """calculates the speed multiplier gained by picking a certain path"""
+
+        #midpoint is half of the total population
+        midpoint = self.model.commuters/2 *10 # replace *10 by *trace_strength later
+        print(midpoint)
+
+        #speed multiplier is bounded between 1 and max_multiplier (sigmoid)
+        speed_multiplier = 1 + ((max_multiplier-1)/( 1 + math.pow(math.e,-slope*(path_strength-midpoint))))
+
+        return speed_multiplier
+
+    def calculate_x_point(self, start, direction, distance):
+        """calculates the x coordinate given some starting point, angle and direction"""
+        #convert degree to radiant
+        direction = np.deg2rad(direction)
+        #calculate new x point
+        x_point = start + np.sin(direction) * distance
+
+        return x_point
+
+    def calculate_y_point(self, start, direction, distance):
+        """calculates the x coordinate give some starting point, angle and direction"""
+        direction = np.deg2rad(direction)
+        x_point = start + np.cos(direction) * distance
+
+        return x_point
+
+    def calculate_point(self,start,direction,distance):
+        """calculates the x coordinate give some starting point, angle and direction"""
+        #get the coordinates for the point towards this direction
+        x = self.calculate_x_point(start.x,direction,distance)
+        y = self.calculate_y_point(start.y,direction,distance)
+        point = Point([x,y])
+
+        return point
+
+
+    def get_vision_points(self, angle=30, points=15):
+        """gets the points on the border of an agents vision
+            returns a list of coordinates for these points
+        """
+
+        #get direction to current goal
             direction = get_direction(self.geometry, self.goal)
 
             # calculate utility for each direction +- 5 degrees
