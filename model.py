@@ -98,7 +98,7 @@ class TransportMap(mg.GeoSpace):
         # generate the initial 0 grid for the number of agents that used a cell
         raster_layer.apply_raster(
             data=np.zeros(shape=(1, raster_layer.height, raster_layer.width)),
-            attr_name="visits"
+            attr_name="trace_strength"
         )
 
         super().add_layer(raster_layer)
@@ -133,7 +133,7 @@ class Commuter(mg.GeoAgent):
     destination_count: int
 
 
-    def __init__(self, unique_id, model, geometry, crs, speed = .1, vision = 1.0, destination_count = 0) -> None:
+    def __init__(self, unique_id, model, geometry, crs, speed = .3, vision = .3, destination_count = 0) -> None:
             super().__init__(unique_id, model, geometry, crs)
             self.speed = speed
             self.vision = vision
@@ -233,6 +233,8 @@ class Commuter(mg.GeoAgent):
 
             #convert path visits to choice probabilities
             choice_probabilities = np.asarray(path_sums) / sum(path_sums)
+            # print(choice_probabilities)
+            # print()
 
             #pick a direction based on the probabilities
             indices = list(range(0,len(directions)))
@@ -300,7 +302,7 @@ class Commuter(mg.GeoAgent):
 
         return point
 
-    def get_vision_directions(self,angle=30,points=15):
+    def get_vision_directions(self,angle=60,points=15):
         """gets the directions towards the points on the border of an agents vision
            returns a list of degrees towards these points        
         """
@@ -369,7 +371,7 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=400 ,trace_strength=100,trace_fade=True):
+    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=200 ,trace_strength=20,trace_fade=True):
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer(resolution,crs)
@@ -380,6 +382,7 @@ class GeoModel(mesa.Model):
         self.num_destinations = num_destinations
         self.trace_strength = trace_strength
         self.trace_fade = trace_fade
+        self.avg_raster_value = 0
 
         global trace_length
         trace_length = trace_strength
@@ -393,12 +396,21 @@ class GeoModel(mesa.Model):
         #initialize agents and assign them destinations
         self.initialize_agents(num_commuters,num_destinations,buildings)
 
+        self.datacollector = mesa.datacollection.DataCollector(
+            model_reporters = {'Avg_raster_value': 'avg_raster_value'}
+        )
+        self.running = True
+        self.datacollector.collect(self)
+
     def step(self) -> None:
         self.schedule_Commuter.step()
 
         #only when set to True
         if self.trace_fade:
             self.schedule_Cells.step()
+
+        self.avg_raster_value = self.space.raster_layer.get_raster('trace_strength').mean()
+        self.datacollector.collect(self)
 
     def run_model(self, step_count=10):
         for i in range(step_count):
@@ -500,7 +512,10 @@ class GeoModel(mesa.Model):
             for cell in self.space.raster_layer:
                 self.schedule_Cells.add(cell)
 
-model = GeoModel(num_buildings=5,num_commuters=5,num_destinations=5)
-model.run_model(step_count=5)
+    def extract_image(self):
+        return self.space.raster_layer.get_raster('trace_strength')
+
+# model = GeoModel(num_buildings=5,num_commuters=5,num_destinations=5)
+# model.run_model(step_count=5)
 
 
