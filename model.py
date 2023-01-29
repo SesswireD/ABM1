@@ -61,6 +61,13 @@ def get_direction(start: Point, goal: Point):
 
     return direction
 
+def compute_distance(destinations: list):
+    distance = 0
+    for i in range(len(destinations)):
+        distance += destinations[i].distance(destinations[(i + 1)%len(destinations)])
+    return distance
+
+
 class TransportCell(mg.Cell):
     visits_total: float
     trace_strength: float
@@ -138,6 +145,7 @@ class Commuter(mg.GeoAgent):
             self.speed = speed
             self.vision = vision
             self.destination_count = destination_count
+            self.step_count = 0
 
     def move(self, new_location)->None:
         self.geometry = new_location
@@ -200,6 +208,7 @@ class Commuter(mg.GeoAgent):
         #move to goal directly if within reach
         if distance < self.speed:
             self.move(self.goal)
+            self.step_count += 1
 
             #check for new goals
             self.check_destination()
@@ -255,6 +264,7 @@ class Commuter(mg.GeoAgent):
 
             #move to new location
             self.move(new_location)
+            self.step_count += 1
 
     def get_path_sum(self, cells_on_path):
         """give a list of cell indices returns the total amount of previous visits on the path"""
@@ -330,6 +340,10 @@ class Commuter(mg.GeoAgent):
                 self.goal = self.home
             elif self.goal == self.home:
                 self.goal = self.destinations[self.destination_count]
+
+                # save time steps as travel time
+                self.avg_speed = self.overall_distance / self.step_count
+                self.step_count = 0
             else:
                 #increment destination count
                 self.destination_count += 1
@@ -371,8 +385,8 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=200 ,trace_strength=20,trace_fade=True):
-        self.schedule = mesa.time.RandomActivation(self)
+    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=400 ,trace_strength=40,trace_fade=True, agent_speed=.3):
+        # self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer(resolution,crs)
         self.x_dim = self.space.raster_layer.width
@@ -383,6 +397,7 @@ class GeoModel(mesa.Model):
         self.trace_strength = trace_strength
         self.trace_fade = trace_fade
         self.avg_raster_value = 0
+        self.agent_speed = agent_speed
 
         global trace_length
         trace_length = trace_strength
@@ -397,13 +412,14 @@ class GeoModel(mesa.Model):
         self.initialize_agents(num_commuters,num_destinations,buildings)
 
         self.datacollector = mesa.datacollection.DataCollector(
-            model_reporters = {'Avg_raster_value': 'avg_raster_value'}
+            # model_reporters = {'Avg_raster_value': 'avg_raster_value'},
+            agent_reporters = {'Speed': "avg_speed"}
         )
         self.running = True
         self.datacollector.collect(self)
 
     def step(self) -> None:
-        self.schedule_Commuter.step()
+        self.schedule.step()
 
         #only when set to True
         if self.trace_fade:
@@ -415,6 +431,10 @@ class GeoModel(mesa.Model):
     def run_model(self, step_count=10):
         for i in range(step_count):
             self.step()
+
+            #TODO DECIDE IF WE WANT THIS
+            if (i > 50) and (self.datacollector.get_agent_vars_dataframe().groupby('Step').mean('Speed').to_numpy()[i-30:i].std() < .0005):
+                break
 
     def initialize_locations(self,num_buildings):
         """Initializes a random number of locations on the raster.
@@ -485,8 +505,11 @@ class GeoModel(mesa.Model):
             #first destination is the first goal
             goal = destination[0]
 
+            # compute overall distance for agent and base travel time
+            overall_distance = compute_distance([home] + destination)
+
             #save info for the commuter agent in dictionary
-            c = {'uniqueID': i, 'geometry': home_location, 'home': home,'goal': goal,'destinations':[destination]}
+            c = {'uniqueID': i, 'geometry': home_location, 'home': home,'goal': goal,'destinations':[destination], 'overall_distance':overall_distance, 'avg_speed':self.agent_speed}
 
             #convert dictionary to geo dataframe
             commuter = gpd.GeoDataFrame(c, crs=crs)
@@ -495,16 +518,16 @@ class GeoModel(mesa.Model):
             commuters = pd.concat([commuters, commuter], ignore_index=True)
 
         #instantiate commuter agents from geo dataframe
-        ac1 = mg.AgentCreator(agent_class=Commuter, model=self)
+        ac1 = mg.AgentCreator(agent_class=Commuter, model=self, agent_kwargs={'speed':self.agent_speed})
         agents1 = ac1.from_GeoDataFrame(commuters, unique_id="uniqueID")
 
         #don't commuters need to be added to the space as well?
         self.space.add_agents(agents1)
 
         #add agents to scheduler
-        self.schedule_Commuter = RandomActivation(self)
+        self.schedule = RandomActivation(self)
         for agent in agents1:
-            self.schedule_Commuter.add(agent)
+            self.schedule.add(agent)
 
         #add transport Cells to scheduler if we want traces to fade over time
         if self.trace_fade:
