@@ -197,6 +197,7 @@ class Commuter(mg.GeoAgent):
             # self.goal = self.home     
     
         #check if arrived and get new destination
+        self.step_count += 1
         self.check_destination()
 
     def move_to_destination_preference(self):
@@ -342,7 +343,7 @@ class Commuter(mg.GeoAgent):
                 self.goal = self.destinations[self.destination_count]
 
                 # save time steps as travel time
-                self.avg_speed = self.overall_distance / self.step_count
+                # self.avg_speed = self.overall_distance / self.step_count
                 self.step_count = 0
             else:
                 #increment destination count
@@ -362,6 +363,15 @@ class Commuter(mg.GeoAgent):
         _, cells_passed = get_cells_in_direction(old, direction, distance, self.speed/20, self.model)
 
         #remove duplicates from cells
+        cells_passed = list(set(cells_passed))
+
+        # get all adjacent cells for thicker traces (3 cells wide)
+        for cell in cells_passed:
+            neighbors = self.model.space.raster_layer.iter_neighborhood(cell, moore=False, include_center=False)
+
+            cells_passed = cells_passed + list(neighbors)
+
+        #remove duplicates from cells
         cells_passed = set(cells_passed)
 
         #remove the cell on the old position
@@ -378,6 +388,7 @@ class Commuter(mg.GeoAgent):
         """defines the movement of the agent in one timestep"""
         old_position = self.geometry
         self.move_to_destination_preference()
+        # self.move_to_destination_random()
         new_position = self.geometry
         self.leave_trace(old_position,new_position)
 
@@ -403,7 +414,7 @@ class GeoModel(mesa.Model):
         trace_length = trace_strength
 
         #random seed for testing
-        # np.random.seed(0)
+        np.random.seed(0)
 
         #initialize random locations and place them on the map
         buildings = self.initialize_locations(num_buildings)
@@ -411,12 +422,12 @@ class GeoModel(mesa.Model):
         #initialize agents and assign them destinations
         self.initialize_agents(num_commuters,num_destinations,buildings)
 
-        self.datacollector = mesa.datacollection.DataCollector(
-            # model_reporters = {'Avg_raster_value': 'avg_raster_value'},
-            agent_reporters = {'Speed': "avg_speed"}
-        )
-        self.running = True
-        self.datacollector.collect(self)
+        # self.datacollector = mesa.datacollection.DataCollector(
+        #     model_reporters = {'Avg_raster_value': 'avg_raster_value'},
+        #     agent_reporters = {'Speed': "avg_speed"}
+        # )
+        # self.running = True
+        # self.datacollector.collect(self)
 
     def step(self) -> None:
         self.schedule.step()
@@ -425,16 +436,19 @@ class GeoModel(mesa.Model):
         if self.trace_fade:
             self.schedule_Cells.step()
 
-        self.avg_raster_value = self.space.raster_layer.get_raster('trace_strength').mean()
-        self.datacollector.collect(self)
+        # # get average trace strength for all nonzero values
+        # array = self.space.raster_layer.get_raster('trace_strength')[0]
+        # self.avg_raster_value = array[array!=0].mean()
+
+        # self.datacollector.collect(self)
 
     def run_model(self, step_count=10):
         for i in range(step_count):
             self.step()
 
-            #TODO DECIDE IF WE WANT THIS
-            if (i > 50) and (self.datacollector.get_agent_vars_dataframe().groupby('Step').mean('Speed').to_numpy()[i-30:i].std() < .0005):
-                break
+            # I DONT THINK WE WANT THIS
+            # if (i > 50) and (self.datacollector.get_agent_vars_dataframe().groupby('Step').mean('Speed').to_numpy()[i-30:i].std() < .0005):
+            #     break
 
     def initialize_locations(self,num_buildings):
         """Initializes a random number of locations on the raster.
@@ -538,7 +552,11 @@ class GeoModel(mesa.Model):
     def extract_image(self):
         return self.space.raster_layer.get_raster('trace_strength')
 
-# model = GeoModel(num_buildings=5,num_commuters=5,num_destinations=5)
-# model.run_model(step_count=5)
+    def get_avg_raster_value(self):
+        array = self.space.raster_layer.get_raster('trace_strength')[0]
+        self.avg_raster_value = array[array!=0].mean()
 
-
+# model = GeoModel(num_buildings=70,num_commuters=60,num_destinations=3,trace_strength=100, resolution=400)
+# model.run_model(step_count=500)
+# model.space.raster_layer.to_file("model.tif", attr_name='trace_strength')
+# model.space.raster_layer.to_file("model_total.tif", attr_name='visits_total')
