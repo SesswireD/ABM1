@@ -9,15 +9,15 @@ from model import GeoModel
 
 # We define our variables and bounds
 problem = {
-    'num_vars': 3,#5,
-    'names': ['num_buildings', 'num_destinations', 'trace_strength'],#, 'vision_angle', 'vision_samples'],
-    'bounds': [[50,100,11], [2,10,9], [10,100,10]],#, [7.5,90,12], [3,15,7]]
-    # 'bounds': [[50,100,2], [2,10,2], [10,100,2]],#, [7.5,90,2], [3,15,2]]
+    'num_vars': 5,
+    'names': ['num_buildings', 'num_destinations', 'trace_strength', 'agent_vision_angle', 'agent_vision_samples'],
+    'bounds': [[50,100,11], [2,10,9], [10,100,10], [7.5,90,12], [3,15,7]]
+    # 'bounds': [[50,100,2], [2,10,2], [10,100,2], [7.5,90,2], [3,15,2]]
 }
 
 # Set the repetitions, the amount of steps, and the amount of distinct values per variable
-replicates = 2
-max_steps = 3
+replicates = 30
+max_steps = 170
 
 # Set the outputs
 model_reporters = {'Avg_raster_value': lambda m: m.avg_raster_value}
@@ -30,7 +30,7 @@ for i, var in enumerate(problem['names']):
     
     # # Keep in mind that wolf_gain_from_food should be integers. You will have to change
     # # your code to acommodate for this or sample in such a way that you only get integers.
-    if var == 'vision_angle':
+    if var == 'agent_vision_angle':
         samples = np.linspace(*problem['bounds'][i])
     
     batch = BatchRunner(GeoModel, 
