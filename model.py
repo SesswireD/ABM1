@@ -140,12 +140,14 @@ class Commuter(mg.GeoAgent):
     destination_count: int
 
 
-    def __init__(self, unique_id, model, geometry, crs, speed = .1, vision = .3, destination_count = 0) -> None:
-            super().__init__(unique_id, model, geometry, crs)
-            self.speed = speed
-            self.vision = vision
-            self.destination_count = destination_count
-            self.step_count = 0
+    def __init__(self, unique_id, model, geometry, crs) -> None:
+        super().__init__(unique_id, model, geometry, crs)
+        self.speed = self.model.agent_speed
+        self.vision = self.model.agent_vision_range
+        self.vision_angle = self.model.agent_vision_angle
+        self.vision_samples = self.model.agent_vision_samples
+        self.destination_count = 0
+        self.step_count=0
 
     def move(self, new_location)->None:
         self.geometry = new_location
@@ -396,8 +398,8 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=400 ,trace_strength=40,trace_fade=True, agent_speed=.1):
-        # self.schedule = mesa.time.RandomActivation(self)
+    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3,agent_speed =.1,agent_vision_angle=7.5, agent_vision_range = 1.0,agent_vision_samples = 7, resolution=400 ,trace_strength=100,trace_fade=True):
+        self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer(resolution,crs)
         self.x_dim = self.space.raster_layer.width
@@ -407,8 +409,10 @@ class GeoModel(mesa.Model):
         self.num_destinations = num_destinations
         self.trace_strength = trace_strength
         self.trace_fade = trace_fade
-        self.avg_raster_value = 0
         self.agent_speed = agent_speed
+        self.agent_vision_range = agent_vision_range
+        self.agent_vision_angle = agent_vision_angle
+        self.agent_vision_samples = agent_vision_samples
 
         global trace_length
         trace_length = trace_strength
@@ -532,7 +536,7 @@ class GeoModel(mesa.Model):
             commuters = pd.concat([commuters, commuter], ignore_index=True)
 
         #instantiate commuter agents from geo dataframe
-        ac1 = mg.AgentCreator(agent_class=Commuter, model=self, agent_kwargs={'speed':self.agent_speed})
+        ac1 = mg.AgentCreator(agent_class=Commuter, model=self)
         agents1 = ac1.from_GeoDataFrame(commuters, unique_id="uniqueID")
 
         #don't commuters need to be added to the space as well?
