@@ -140,7 +140,7 @@ class Commuter(mg.GeoAgent):
     destination_count: int
 
 
-    def __init__(self, unique_id, model, geometry, crs, speed = .1, vision = .3, destination_count = 0) -> None:
+    def __init__(self, unique_id, model, geometry, crs, speed = .3, vision = .3, destination_count = 0) -> None:
             super().__init__(unique_id, model, geometry, crs)
             self.speed = speed
             self.vision = vision
@@ -396,7 +396,7 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=400 ,trace_strength=40,trace_fade=True, agent_speed=.1):
+    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=400 ,trace_strength=40,trace_fade=True, agent_speed=.3):
         # self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer(resolution,crs)
@@ -414,7 +414,7 @@ class GeoModel(mesa.Model):
         trace_length = trace_strength
 
         #random seed for testing
-        np.random.seed(0)
+        np.random.seed(42)
 
         #initialize random locations and place them on the map
         buildings = self.initialize_locations(num_buildings)
@@ -424,9 +424,9 @@ class GeoModel(mesa.Model):
 
         # self.datacollector = mesa.datacollection.DataCollector(
         #     model_reporters = {'Avg_raster_value': 'avg_raster_value'},
-        #     agent_reporters = {'Speed': "avg_speed"}
+        # #     agent_reporters = {'Speed': "avg_speed"}
         # )
-        # self.running = True
+        self.running = True
         # self.datacollector.collect(self)
 
     def step(self) -> None:
@@ -436,9 +436,9 @@ class GeoModel(mesa.Model):
         if self.trace_fade:
             self.schedule_Cells.step()
 
-        # # get average trace strength for all nonzero values
-        # array = self.space.raster_layer.get_raster('trace_strength')[0]
-        # self.avg_raster_value = array[array!=0].mean()
+        # get average trace strength for all nonzero values
+        array = self.space.raster_layer.get_raster('trace_strength')[0]
+        self.avg_raster_value = array[array!=0].mean()
 
         # self.datacollector.collect(self)
 
@@ -458,7 +458,7 @@ class GeoModel(mesa.Model):
         a GeoDataFrame with building locations
         """
         #let us know what the model is doing
-        print("initializing locations")
+        # print("initializing locations")
 
         #Initialize an empty geodataframe for the buildings
         d = {'uniqueID': [], 'geometry': []}
@@ -502,7 +502,7 @@ class GeoModel(mesa.Model):
         d = {'uniqueID': [], 'geometry': [], 'home': [], 'goal':[], 'destinations': []}
         commuters = gpd.GeoDataFrame(d, crs=crs)
 
-        print("initializing agents")
+        # print("initializing agents")
         #create num_commuters commuters
         for i in range(num_commuters):
 
