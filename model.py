@@ -140,7 +140,7 @@ class Commuter(mg.GeoAgent):
     destination_count: int
 
 
-    def __init__(self, unique_id, model, geometry, crs, speed = .3, vision = .3, destination_count = 0) -> None:
+    def __init__(self, unique_id, model, geometry, crs, speed = .1, vision = .3, destination_count = 0) -> None:
             super().__init__(unique_id, model, geometry, crs)
             self.speed = speed
             self.vision = vision
@@ -396,7 +396,7 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=400 ,trace_strength=40,trace_fade=True, agent_speed=.3):
+    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3, resolution=400 ,trace_strength=40,trace_fade=True, agent_speed=.1):
         # self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer(resolution,crs)
@@ -555,6 +555,7 @@ class GeoModel(mesa.Model):
     def get_avg_raster_value(self):
         array = self.space.raster_layer.get_raster('trace_strength')[0]
         self.avg_raster_value = array[array!=0].mean()
+        return self.avg_raster_value
 
 # model = GeoModel(num_buildings=70,num_commuters=60,num_destinations=3,trace_strength=100, resolution=400)
 # model.run_model(step_count=500)
