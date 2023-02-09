@@ -398,7 +398,7 @@ class Commuter(mg.GeoAgent):
 #the actual model defines the space and initializes agents
 class GeoModel(mesa.Model):
 
-    def __init__(self, num_buildings=10, num_commuters=5, num_destinations=3,agent_speed =.1,agent_vision_angle=7.5, agent_vision_range = 1.0,agent_vision_samples = 7, resolution=400 ,trace_strength=100,trace_fade=True):
+    def __init__(self, num_buildings=70, num_commuters=60, num_destinations=3,agent_speed =.1,agent_vision_angle=20, agent_vision_range = 0.1,agent_vision_samples = 7, resolution=400 ,trace_strength=40,trace_fade=True):
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer(resolution,crs)
@@ -418,7 +418,7 @@ class GeoModel(mesa.Model):
         trace_length = trace_strength
 
         #random seed for testing
-        np.random.seed(42)
+        #np.random.seed(42)
 
         #initialize random locations and place them on the map
         buildings = self.initialize_locations(num_buildings)
@@ -565,3 +565,4 @@ class GeoModel(mesa.Model):
 # model.run_model(step_count=500)
 # model.space.raster_layer.to_file("model.tif", attr_name='trace_strength')
 # model.space.raster_layer.to_file("model_total.tif", attr_name='visits_total')
+
