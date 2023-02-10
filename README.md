@@ -9,7 +9,11 @@ The model is based in python 3.
 
 The file model.py defines the functionality of the model. Here agent classes and their behaviour are defined. The GeoModel class defines how the model is intitialized (creation of agents) and what changes are run in what order.
 
-The file server.py runs the model and visualises it in browser. Adapt this file to change color of the environment or the agents. Add sliders or parameter settings to the model. 
+The file server.py runs the model and visualises it in browser. Adapt this file to change color of the environment or the agents. Add sliders or parameter settings to the model. To start the visualization run the following command in an environment that has all required dependencies installed:
+
+```
+python server.py
+```
 
 The sensitivity analysis is included in sensitivity_analysis.ipynb. The results can be plotted using figure_plotting.ipynb. The resulting figures of the sensitivity analysis can be found in [figures](https://github.com/SesswireD/ABM1/tree/main/figures). 
 
