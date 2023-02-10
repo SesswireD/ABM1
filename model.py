@@ -16,7 +16,20 @@ import matplotlib.pyplot as plt
 crs = "EPSG:4326"
 
 def get_cell(point: Point, model):
-    """When given a point the function returns the index of the grid cell that contains this point"""
+    """When given a point the function returns the index of the grid cell that contains this point
+    
+    Parameters
+    ----------
+    point : Point
+        the coordinate in the continuous space
+    model : GeoModel
+        the model
+
+    Returns
+    -------
+    pos : (int, int)
+        grid index of the cell that the point is located in
+    """
     resolution_x, resolution_y = model.space.raster_layer.resolution
     lower_left_x, lower_left_y = model.space.raster_layer.total_bounds[0:2]
 
@@ -31,7 +44,26 @@ def get_cell(point: Point, model):
     return pos
 
 def get_cells_in_direction(origin: Point, direction, distance, interval, model):
-    """gets the cells under a line in a given direction by sampling"""
+    """gets the cells under a line in a given direction by sampling
+
+    Parameters
+    ----------
+    origin : Point
+        the start coordinate
+    direction : float64
+        direction that should be sampled
+    interval : float64
+        interval length (should be chosen smaller than the grid resolution)
+    model : GeoModel
+        the model
+
+    Returns
+    -------
+    points : list(Points)
+        list of the points that were evaluated
+    cells : list((int, int))
+        list of grid index tuples corresponding to the points
+    """
     n_points = int(np.ceil(distance/interval)) # number of points given by distance and sampling interval
     interval = distance/n_points # update interval length
     points = [] # should the original point be included?
@@ -49,7 +81,21 @@ def get_cells_in_direction(origin: Point, direction, distance, interval, model):
     return points, cells
 
 def get_direction(start: Point, goal: Point):
-    """Takes two points and calculates the direction in degrees from start to goal"""
+    """Takes two points and calculates the direction in degrees from start to goal
+
+    Parameters
+    ----------
+    start : Point
+        the start coordinate
+    goal : Point
+        the goal coordinate
+
+    Returns
+    -------
+    direction : float64
+        the direction from start to goal measured in degrees
+    """
+
     dx = goal.x - start.x
     dy = goal.y - start.y
     
@@ -62,6 +108,20 @@ def get_direction(start: Point, goal: Point):
     return direction
 
 def compute_distance(destinations: list):
+    """
+    computes the total distance of the trip of an agent
+
+    Parameters
+    ----------
+    destinations : list(Points)
+        the locations that an agent visits
+
+    Returns
+    -------
+    distance : float64
+        distance of the total trip
+    """
+
     distance = 0
     for i in range(len(destinations)):
         distance += destinations[i].distance(destinations[(i + 1)%len(destinations)])
@@ -69,6 +129,9 @@ def compute_distance(destinations: list):
 
 
 class TransportCell(mg.Cell):
+    """
+    Initializes the transport cell class which make up the TransportMap GeoSpace.
+    """
     visits_total: float
     trace_strength: float
 
@@ -77,6 +140,16 @@ class TransportCell(mg.Cell):
         pos: mesa.space.Coordinate or None = None,
         indices: mesa.space.Coordinate or None = None,
     ):
+        """constructor for the cell object. Defines the position in the grid and the initial attribute values of the cells
+        
+        Parameters
+        ----------
+        pos : (int, int)
+            Position of the cell in (x, y) format. Origin is at lower left corner of the grid
+        indices : (int, int)
+            Indices of the cell in (row, col) format. Origin is at upper left corner of the grid
+        """
+
         super().__init__(pos, indices)
         self.visits_total = 0
         self.trace_strength = 0
@@ -87,6 +160,7 @@ class TransportCell(mg.Cell):
         self.trace_strength += trace_length
 
     def step(self):
+        """Performs the actions required at each time step"""
         #trace strength fades over time
         if self.trace_strength >= 1:
             self.trace_strength -= 1
@@ -94,10 +168,27 @@ class TransportCell(mg.Cell):
 class TransportMap(mg.GeoSpace):
 
     def __init__(self, crs):
+         """constructor for the discrete GeoSpace.
+
+         Parameters
+         ----------
+         crs : str
+            coordinate reference system of the GeoSpace as EPSG code
+         """
         super().__init__(crs=crs)
 
     def set_raster_layer(self, resolution, crs):
-        """attempt to create raster without existing file"""
+        """
+        create raster without existing file
+
+        Parameters
+        ----------
+        resolution : int
+            number of cells in x and y direction
+
+        crs : str
+            coordinate reference system of the GeoSpace as EPSG code
+        """
 
         #changing
         raster_layer = mg.RasterLayer(resolution,resolution,crs, total_bounds=[0.0,0.0,10.0,10.0],cell_cls=TransportCell)
@@ -112,6 +203,7 @@ class TransportMap(mg.GeoSpace):
     
     @property
     def raster_layer(self):
+        """return the first / main raster layer"""
         return self.layers[0]
    
 class Building(mg.GeoAgent):
@@ -121,9 +213,25 @@ class Building(mg.GeoAgent):
     crs: pyproj.CRS
 
     def __init__(self, unique_id, model, geometry, crs) -> None:
-            super().__init__(unique_id, model, geometry, crs)
+        """
+        Constructor for the building GeoAgent object.
+        
+        Parameters
+        ----------
+        unique_id : int, float, or string
+            A unique identifier
+        model : GeoModel
+            the model
+        geometry : Point
+            geometry of the agent
+        crs : str
+            coordinate reference system of the GeoSpace as EPSG code
+        """
+
+        super().__init__(unique_id, model, geometry, crs)
 
     def step(self):
+        """Step function."""
         #print('building')
         pass
 
@@ -141,6 +249,20 @@ class Commuter(mg.GeoAgent):
 
 
     def __init__(self, unique_id, model, geometry, crs) -> None:
+        """
+        Constructor for the Commuter GeoAgent object.
+        
+        Parameters
+        ----------
+        unique_id : int, float, or string
+            A unique identifier
+        model : GeoModel
+            the model
+        geometry : Point
+            geometry of the agent
+        crs : str
+            coordinate reference system of the GeoSpace as EPSG code
+        """
         super().__init__(unique_id, model, geometry, crs)
         self.speed = self.model.agent_speed
         self.vision = self.model.agent_vision_range
@@ -150,6 +272,14 @@ class Commuter(mg.GeoAgent):
         self.step_count=0
 
     def move(self, new_location)->None:
+        """
+        Moves the agent to a new position
+        Parameters
+        ----------
+        new_location : Point
+            location to move the agent to
+        
+        """
         self.geometry = new_location
 
     def move_to_destination(self):
@@ -173,7 +303,7 @@ class Commuter(mg.GeoAgent):
         self.check_destination()
     
     def move_to_destination_random(self):
-        """Moves the agent towards a point with some random offset"""
+        """Moves the agent towards its destination with some random deviations in direction"""
 
         #get the distance to the current objective
         distance = self.geometry.distance(self.goal)
@@ -203,7 +333,7 @@ class Commuter(mg.GeoAgent):
         self.check_destination()
 
     def move_to_destination_preference(self):
-        """Move the agent towards desination with preference for existing paths"""
+        """Move the agent towards destination with preference for existing paths"""
 
         #get the distance to the current objective
         distance = self.geometry.distance(self.goal)
@@ -270,7 +400,19 @@ class Commuter(mg.GeoAgent):
             self.step_count += 1
 
     def get_path_sum(self, cells_on_path):
-        """give a list of cell indices returns the total amount of previous visits on the path"""
+        """
+        given a list of cell indices returns the total trace strength the path
+        
+        Parameters
+        ----------
+        cells_on_path : list((int, int))
+            list of the grid indices
+
+        Returns
+        -------
+        sum_of_path : int or float
+            sum of the trace strength of the cells on the path.
+        """
 
         #initialize sum
         sum_of_path = 0
@@ -291,7 +433,22 @@ class Commuter(mg.GeoAgent):
         return sum_of_path
 
     def calculate_x_point(self, start, direction, distance):
-        """calculates the x coordinate given some starting point, angle and direction"""
+        """calculates the x coordinate given some starting point, angle and direction
+        
+        Parameters
+        ----------
+        start : Point
+            starting coordinate
+        direction : float
+            direction
+        distance : distance
+            distance
+
+        Resturns
+        --------
+        x_point : float
+            x coordinate
+        """
         #convert degree to radiant
         direction = np.deg2rad(direction)
         #calculate new x point
@@ -300,14 +457,45 @@ class Commuter(mg.GeoAgent):
         return x_point
 
     def calculate_y_point(self, start, direction, distance):
-        """calculates the x coordinate give some starting point, angle and direction"""
+        """calculates the x coordinate give some starting point, angle and direction
+        
+        Parameters
+        ----------
+        start : Point
+            starting coordinate
+        direction : float
+            direction
+        distance : distance
+            distance
+
+        Resturns
+        --------
+        y_point : float
+            y coordinate
+        """
         direction = np.deg2rad(direction)
         x_point = start + np.cos(direction) * distance
 
         return x_point
 
     def calculate_point(self,start,direction,distance):
-        """calculates the x coordinate give some starting point, angle and direction"""
+        """calculates the coordinate give some starting point, angle and direction
+        
+        Parameters
+        ----------
+        start : Point
+            starting coordinate
+        direction : float
+            direction
+        distance : distance
+            distance
+
+        Resturns
+        --------
+        pointt : Point
+            coordinates of new point
+
+        """
         #get the coordinates for the point towards this direction
         x = self.calculate_x_point(start.x,direction,distance)
         y = self.calculate_y_point(start.y,direction,distance)
@@ -316,8 +504,22 @@ class Commuter(mg.GeoAgent):
         return point
 
     def get_vision_directions(self,angle=60,points=15):
-        """gets the directions towards the points on the border of an agents vision
-           returns a list of degrees towards these points        
+        """
+        gets the directions towards the points on the border of an agents vision
+        returns a list of degrees towards these points
+
+              
+        Parameters
+        ----------
+        angle : float
+            field of vision of the agent
+        points : int
+            number of vision directions to be sampled
+
+        Resturns
+        --------
+        vision_direction : list(floats)
+            list of direction values
         """
 
         #get direction towards the current goal
@@ -353,7 +555,17 @@ class Commuter(mg.GeoAgent):
                 self.goal = self.destinations[self.destination_count]          
 
     def leave_trace(self, old, new) -> None:
-        """Function to leave a trace on the grid. Trace defined as pass count in a raster"""
+        """
+        Function to leave a trace on the grid. Trace defined as pass count in a raster
+        
+
+        Parameters
+        ----------
+        old : Point
+            old position of agent
+        new : Point
+            new position of the agent
+        """
 
         #get direction from old to new location
         direction = get_direction(old, new)
@@ -399,6 +611,24 @@ class Commuter(mg.GeoAgent):
 class GeoModel(mesa.Model):
 
     def __init__(self, num_buildings=70, num_commuters=60, num_destinations=3,agent_speed =.1,agent_vision_angle=20, agent_vision_range = 0.1,agent_vision_samples = 7, resolution=400 ,trace_strength=40,trace_fade=True):
+        """constructor for the model object. Defines a space and initializes agents and buildings on it.
+        
+        Parameters
+        ----------
+        num_buildings : int
+            the amount of random locations to generate
+        num_commuters : int
+            the amount of agents to generate
+        num_destinations : int
+            the amount of destinations to assign to each agent
+        width : int
+            the width in pixels of the space (resolution)
+        height : int
+            the height in pixels of the space (resolution)
+        bounds : float
+            the total width and height of the space measured in degrees away from point (0,0)
+        """
+        
         self.schedule = mesa.time.RandomActivation(self)
         self.space = TransportMap(crs=crs)
         self.space.set_raster_layer(resolution,crs)
@@ -434,6 +664,8 @@ class GeoModel(mesa.Model):
         # self.datacollector.collect(self)
 
     def step(self) -> None:
+        """defines one timestep of the model"""
+
         self.schedule.step()
 
         #only when set to True
@@ -447,6 +679,13 @@ class GeoModel(mesa.Model):
         # self.datacollector.collect(self)
 
     def run_model(self, step_count=10):
+        """        
+        Parameters
+        ----------
+        step_count : int
+            the number of timesteps to run the model
+        """
+
         for i in range(step_count):
             self.step()
 
@@ -455,12 +694,20 @@ class GeoModel(mesa.Model):
             #     break
 
     def initialize_locations(self,num_buildings):
-        """Initializes a random number of locations on the raster.
+        """Initializes a number of random locations on the GeoSpace.
         Locations are defined as Building GeoAgents
 
-        returns:
-        a GeoDataFrame with building locations
+        Parameters
+        ----------
+        num_buildings : int
+            the amount of random locations to generate
+
+        Returns
+        -------
+        buildings : GeoDataFrame
+            a collection of random locations
         """
+
         #let us know what the model is doing
         # print("initializing locations")
 
@@ -501,6 +748,18 @@ class GeoModel(mesa.Model):
         return buildings
 
     def initialize_agents(self, num_commuters, num_destinations, buildings):
+        """Initializes a number of agents on the GeoSpace.
+        Agents are defined as Commuter GeoAgents. Their starting location is drawn from buildings.
+
+        Parameters
+        ----------
+        num_commuters : int
+            the amount of Commuter agents to create
+        num_destinations : int
+            the amount of destinations to assign to each agent
+        buildings : GeoDataFrame
+            a collection of random locations
+        """
 
         # create empty geodf for commuters
         d = {'uniqueID': [], 'geometry': [], 'home': [], 'goal':[], 'destinations': []}
@@ -554,15 +813,11 @@ class GeoModel(mesa.Model):
                 self.schedule_Cells.add(cell)
 
     def extract_image(self):
+        """extract an image from the model"""
         return self.space.raster_layer.get_raster('trace_strength')
 
     def get_avg_raster_value(self):
+        """get the average value of the raster as metric for sensitivity analysis"""
         array = self.space.raster_layer.get_raster('trace_strength')[0]
         self.avg_raster_value = array[array!=0].mean()
         return self.avg_raster_value
-
-# model = GeoModel(num_buildings=70,num_commuters=60,num_destinations=3,trace_strength=100, resolution=400)
-# model.run_model(step_count=500)
-# model.space.raster_layer.to_file("model.tif", attr_name='trace_strength')
-# model.space.raster_layer.to_file("model_total.tif", attr_name='visits_total')
-
