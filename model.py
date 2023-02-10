@@ -175,7 +175,7 @@ class TransportMap(mg.GeoSpace):
          crs : str
             coordinate reference system of the GeoSpace as EPSG code
          """
-        super().__init__(crs=crs)
+         super().__init__(crs=crs)
 
     def set_raster_layer(self, resolution, crs):
         """
