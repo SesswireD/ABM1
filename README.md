@@ -1,5 +1,5 @@
 # Agent-Based Modeling Group 1
-Project for UVA Master course Agent Based Modelling. The model simulates agents walking through a grid from their homes to various locations. The agents leave a trace to comunicate to other agents that they have walked there, and the agents prefer to walk on paths other agents have walked before. The aim of the study was to test if a network emerges and if that network can be used to develop metro-networks.
+Project for UVA Master course Agent Based Modelling 2023. The model simulates agents walking through a grid from their homes to various locations. The agents leave a trace to comunicate to other agents that they have walked there, and the agents prefer to walk on paths other agents have walked before. The aim of the study was to test if a network emerges and if that network can be used to develop metro-networks.
 
 ![](https://github.com/SesswireD/ABM1/blob/main/test_pref_1_seed42.gif)
 
